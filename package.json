@@ -1,0 +1,35 @@
+{
+  "name": "image-forge",
+  "version": "1.0.0",
+  "description": "Fast image converter and compressor: any-direction JPG/PNG/WebP/AVIF/GIF/TIFF conversion and target-size compression, with a browser worker-pool frontend, a sharp-powered server API, and a batch CLI.",
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "bin": {
+    "image-forge": "./cli/index.js"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "convert": "node cli/index.js",
+    "test": "node --test \"tests/*.test.js\"",
+    "test:watch": "node --test --watch \"tests/*.test.js\"",
+    "test:browser": "node tests/browser/run.js"
+  },
+  "keywords": [
+    "image",
+    "converter",
+    "compressor",
+    "webp",
+    "avif",
+    "jpeg",
+    "png",
+    "sharp",
+    "optimization"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "sharp": "^0.34.2"
+  }
+}
