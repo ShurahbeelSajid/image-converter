@@ -235,15 +235,18 @@ export async function convertOnServer(file, options, signal) {
   };
 }
 
-/** Is the sharp-backed API reachable from this page? */
-export async function probeServer() {
+/**
+ * The server's health report - engine versions, limits and which PDF tools it
+ * can run - or null when it cannot be reached.
+ */
+export async function serverHealth() {
   try {
     const response = await fetch('/api/health', { cache: 'no-store' });
-    if (!response.ok) return false;
+    if (!response.ok) return null;
     const body = await response.json();
-    return body?.ok === true;
+    return body?.ok === true ? body : null;
   } catch {
-    return false;
+    return null;
   }
 }
 

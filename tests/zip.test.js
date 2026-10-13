@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-import { createZip, crc32, MAX_ZIP_ENTRIES } from '../public/js/shared/zip.js';
+import { createZip, crc32, MAX_ZIP_ENTRIES, readZip } from '../public/js/shared/zip.js';
 
 const bytes = (text) => new TextEncoder().encode(text);
 const u32 = (buf, offset) => new DataView(buf.buffer, buf.byteOffset).getUint32(offset, true);
@@ -162,5 +162,46 @@ describe('createZip interoperability', () => {
         `extracted bytes match for ${name}`,
       );
     }
+  });
+});
+
+describe('readZip', () => {
+  test('reads back exactly what createZip wrote, in order', () => {
+    const entries = [
+      { name: 'page-1.png', data: bytes('first') },
+      { name: 'страница-2.png', data: bytes('second, with a UTF-8 name') },
+      { name: 'empty.txt', data: new Uint8Array(0) },
+    ];
+    const read = readZip(createZip(entries));
+    assert.deepEqual(read.map((e) => e.name), entries.map((e) => e.name));
+    read.forEach((entry, i) => assert.deepEqual([...entry.data], [...entries[i].data]));
+  });
+
+  test('accepts an ArrayBuffer as well as a Uint8Array', () => {
+    const zip = createZip([{ name: 'a.txt', data: bytes('abc') }]);
+    assert.equal(readZip(zip.buffer)[0].name, 'a.txt');
+  });
+
+  test('refuses an entry whose payload was altered', () => {
+    const zip = createZip([{ name: 'a.txt', data: bytes('hello') }]);
+    zip[30 + 'a.txt'.length] ^= 0xff; // first payload byte
+    assert.throws(() => readZip(zip), /CRC/);
+  });
+
+  test('refuses compressed entries rather than misreading them', () => {
+    const zip = createZip([{ name: 'a.txt', data: bytes('hello') }]);
+    // Flip the central directory's method to DEFLATE (8).
+    const central = u32(zip, zip.length - 22 + 16);
+    new DataView(zip.buffer).setUint16(central + 10, 8, true);
+    assert.throws(() => readZip(zip), /compressed/);
+  });
+
+  test('refuses something that is not a ZIP at all', () => {
+    assert.throws(() => readZip(bytes('certainly not an archive')), /Not a ZIP/);
+  });
+
+  test('refuses a truncated archive', () => {
+    const zip = createZip([{ name: 'a.txt', data: bytes('hello world') }]);
+    assert.throws(() => readZip(zip.subarray(0, zip.length - 10)));
   });
 });

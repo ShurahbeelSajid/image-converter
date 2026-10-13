@@ -25,7 +25,7 @@ sharp.cache(false);
 sharp.concurrency(0);
 
 /** Pixel dimensions as displayed, accounting for an EXIF rotation. */
-function orientedSize(metadata) {
+export function orientedSize(metadata) {
   const swap = (metadata.orientation ?? 1) >= 5;
   return {
     width: swap ? metadata.height : metadata.width,
@@ -98,27 +98,39 @@ function applyEncoder(pipeline, format, options) {
 /**
  * Convert an encoded image buffer to the requested format.
  *
- * @param {Buffer} input Complete source file.
+ * `meta.raw` switches the input to bare pixels - how rendered PDF pages arrive.
+ * They skip file validation, since nothing untrusted produced them, and the
+ * caller is responsible for having bounded their dimensions.
+ *
+ * @param {Buffer} input Complete source file, or raw pixels with `meta.raw`.
  * @param {object} options Normalised options from `normaliseOptions`.
- * @param {{name?: string}} [meta]
+ * @param {{name?: string, raw?: {width: number, height: number, channels: number},
+ *          sourceFormat?: string}} [meta]
  * @returns {Promise<{data: Buffer, info: object}>}
  */
 export async function convertImage(input, options, meta = {}) {
   const startedAt = performance.now();
   const warnings = [];
+  const raw = meta.raw ?? null;
 
-  // Same byte-level validation the browser engine runs, so both paths reject
-  // identically instead of drifting apart.
-  const verdict = validateFile({ name: meta.name ?? 'upload', size: input.length }, input);
-  if (!verdict.valid) {
-    const error = new Error(verdict.errors[0].message);
-    error.code = verdict.errors[0].code;
-    error.status = 415;
-    throw error;
+  let sourceFormat = meta.sourceFormat ?? null;
+  if (raw) {
+    if (input.length !== raw.width * raw.height * raw.channels) {
+      throw new RangeError('Raw pixel buffer does not match its stated dimensions.');
+    }
+  } else {
+    // Same byte-level validation the browser engine runs, so both paths reject
+    // identically instead of drifting apart.
+    const verdict = validateFile({ name: meta.name ?? 'upload', size: input.length }, input);
+    if (!verdict.valid) {
+      const error = new Error(verdict.errors[0].message);
+      error.code = verdict.errors[0].code;
+      error.status = 415;
+      throw error;
+    }
+    warnings.push(...verdict.warnings);
+    sourceFormat = verdict.detected?.format ?? null;
   }
-  warnings.push(...verdict.warnings);
-
-  const sourceFormat = verdict.detected?.format ?? null;
 
   // libvips has no BMP reader, so say so plainly instead of letting the decode
   // fail with a generic "corrupt file" further down.
@@ -145,7 +157,11 @@ export async function convertImage(input, options, meta = {}) {
 
   let metadata;
   try {
-    metadata = await sharp(input, { failOn: 'error', animated: keepAnimation }).metadata();
+    metadata = await sharp(input, {
+      failOn: 'error',
+      animated: keepAnimation,
+      ...(raw && { raw }),
+    }).metadata();
   } catch (cause) {
     const error = new Error('The image could not be decoded - it may be corrupt or truncated.');
     error.code = 'DECODE_FAILED';
@@ -180,6 +196,7 @@ export async function convertImage(input, options, meta = {}) {
       limitInputPixels: MAX_PIXELS,
       sequentialRead: true,
       animated: keepAnimation,
+      ...(raw && { raw }),
     });
 
     // `.rotate()` with no argument bakes in the EXIF orientation. It must come
@@ -259,7 +276,7 @@ export async function convertImage(input, options, meta = {}) {
     data,
     info: {
       format,
-      sourceFormat: metadata.format,
+      sourceFormat: raw ? sourceFormat : metadata.format,
       keptSource: resolved.keptSource,
       width: info.width,
       height: info.height,

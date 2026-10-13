@@ -36,6 +36,8 @@ export const ErrorCode = Object.freeze({
   TOO_MANY_PIXELS: 'TOO_MANY_PIXELS',
   BATCH_TOO_LARGE: 'BATCH_TOO_LARGE',
   INVALID_OPTION: 'INVALID_OPTION',
+  TOO_MANY_PAGES: 'TOO_MANY_PAGES',
+  PDF_ENCRYPTED: 'PDF_ENCRYPTED',
 });
 
 const fail = (code, message) => ({ code, message });
@@ -145,7 +147,7 @@ export function validateBatch(files, limits = {}) {
  * are both 0, which would silently clamp a blank quality field to the minimum
  * and hand back the worst possible image instead of the default.
  */
-function clampInt(value, min, max, fallback) {
+export function clampInt(value, min, max, fallback) {
   if (value === null || value === undefined) return fallback;
   if (typeof value === 'string' && value.trim() === '') return fallback;
   const n = Number(value);

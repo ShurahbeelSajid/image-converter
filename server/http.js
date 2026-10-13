@@ -11,6 +11,18 @@ export function sendJson(res, status, payload) {
   res.end(body);
 }
 
+/**
+ * JSON for a response header. Node rejects header values with characters
+ * above U+00FF, and metadata can carry a file name in any script, so those
+ * are written as JSON \u escapes - `JSON.parse` on the other end restores them.
+ */
+export function jsonHeader(value) {
+  return JSON.stringify(value).replace(
+    /[\u007f-￿]/g,
+    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
+}
+
 /** Send an error in the shape the frontend's fetch wrapper expects. */
 export function sendError(res, status, code, message) {
   sendJson(res, status, { error: message, code });

@@ -7,11 +7,12 @@
  * cores busy on small files without thrashing on large ones.
  */
 
-import { mkdir, open, readdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
+import { collect, extensionOfPath, parseArgs } from './common.js';
 import { ACCEPTED_EXTENSIONS } from '../public/js/shared/constants.js';
 import { SNIFF_BYTES, sniffImage } from '../public/js/shared/signature.js';
 import { normaliseOptions } from '../public/js/shared/validation.js';
@@ -58,71 +59,21 @@ const USAGE = `
     node cli/index.js shot.png -f jpeg --background '#ffffff'
     node cli/index.js photo.jpg -f png
     node cli/index.js big/ -f same -t 200kb -o small/     # compress in place
+
+  Images to PDF and PDF to images: node cli/pdf.js --help
 `;
 
-/** Minimal flag parser - enough for this surface, no dependency. */
-function parseArgs(argv) {
-  const aliases = {
+const ARG_SPEC = {
+  aliases: {
     '-o': '--out', '-q': '--quality', '-e': '--effort',
     '-w': '--max-width', '-h': '--max-height',
     '-r': '--recursive', '-c': '--concurrency',
     '-f': '--format', '-t': '--target-size',
-  };
-  const flags = { _: [] };
-  for (let i = 0; i < argv.length; i += 1) {
-    const raw = argv[i];
-    if (!raw.startsWith('-')) {
-      flags._.push(raw);
-      continue;
-    }
-    const key = (aliases[raw] ?? raw).replace(/^--/, '');
-    if (key === 'recursive' || key === 'lossless' || key === 'keep-metadata' ||
-        key === 'dry-run' || key === 'help') {
-      flags[key] = true;
-    } else {
-      const value = argv[i + 1];
-      if (value === undefined || value.startsWith('-')) {
-        throw new Error(`Option --${key} needs a value.`);
-      }
-      flags[key] = value;
-      i += 1;
-    }
-  }
-  return flags;
-}
+  },
+  booleans: ['recursive', 'lossless', 'keep-metadata', 'dry-run', 'help'],
+};
 
-const isConvertible = (file) =>
-  ACCEPTED_EXTENSIONS.includes(path.extname(file).slice(1).toLowerCase());
-
-/** Expand inputs into a flat list of convertible file paths. */
-async function collect(inputs, recursive) {
-  const files = [];
-  for (const input of inputs) {
-    const info = await stat(input).catch(() => null);
-    if (!info) {
-      console.warn(`  skip  ${input} (not found)`);
-      continue;
-    }
-    if (info.isFile()) {
-      files.push(input);
-      continue;
-    }
-    if (!info.isDirectory()) continue;
-
-    const walk = async (dir) => {
-      for (const entry of await readdir(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          if (recursive) await walk(full);
-        } else if (entry.isFile() && isConvertible(entry.name)) {
-          files.push(full);
-        }
-      }
-    };
-    await walk(input);
-  }
-  return files;
-}
+const isConvertible = (file) => ACCEPTED_EXTENSIONS.includes(extensionOfPath(file));
 
 /** Run `task` over `jobs`, at most `limit` at a time. */
 async function pooled(jobs, limit, task) {
@@ -159,7 +110,7 @@ async function resolveFormatFor(file, requested) {
 }
 
 async function main() {
-  const flags = parseArgs(process.argv.slice(2));
+  const flags = parseArgs(process.argv.slice(2), ARG_SPEC);
 
   if (flags.help || flags._.length === 0) {
     console.log(USAGE);
@@ -182,7 +133,10 @@ async function main() {
     process.exit(1);
   }
 
-  const files = await collect(flags._, Boolean(flags.recursive));
+  const files = await collect(flags._, {
+    recursive: Boolean(flags.recursive),
+    accept: isConvertible,
+  });
   if (files.length === 0) {
     console.error('  error  No convertible images found.');
     process.exit(1);

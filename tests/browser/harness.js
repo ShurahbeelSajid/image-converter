@@ -12,6 +12,8 @@ import { normaliseOptions } from '/js/shared/validation.js';
 import { createZip } from '/js/shared/zip.js';
 import { sniffImage } from '/js/shared/signature.js';
 import { toOutputName } from '/js/shared/filename.js';
+import { imagesToPdf, pdfToImages } from '/js/pdf-client.js';
+import { normalisePdfOptions, normalisePdfRenderOptions } from '/js/shared/pdf.js';
 
 const results = [];
 const log = document.getElementById('log');
@@ -381,6 +383,66 @@ async function run() {
       let threw = null;
       try {
         await convert(file, opts(), { engine: 'server', serverAvailable: true });
+      } catch (error) {
+        threw = error;
+      }
+      assert(threw, 'should have rejected');
+      assertEqual(threw.code, 'UNSUPPORTED_TYPE', 'error code');
+    });
+
+    let builtPdf = null;
+    await check('images bind into a PDF over HTTP, in order', async () => {
+      const images = [
+        { file: await makeImageFile('cover.jpg', 'image/jpeg', 120, 80), format: 'jpeg' },
+        { file: await makeImageFile('page.png', 'image/png', 80, 120), format: 'png' },
+      ];
+      const { bytes, meta } = await imagesToPdf(images, normalisePdfOptions().options);
+      assertEqual(new TextDecoder().decode(bytes.subarray(0, 5)), '%PDF-', 'PDF header');
+      assertEqual(meta.pages, 2, 'page count from x-pdf-meta');
+      assertEqual(meta.name, 'cover.pdf', 'named after the first image');
+      builtPdf = bytes;
+    });
+
+    await check('a BMP is bridged to PNG in the browser before it is bound', async () => {
+      // libvips cannot read BMP, so this only succeeds if the bridge ran.
+      const width = 4;
+      const height = 4;
+      const stride = Math.ceil((width * 3) / 4) * 4;
+      const bmp = new Uint8Array(54 + stride * height);
+      const view = new DataView(bmp.buffer);
+      bmp.set([0x42, 0x4d]);
+      view.setUint32(2, bmp.length, true);
+      view.setUint32(10, 54, true);
+      view.setUint32(14, 40, true);
+      view.setInt32(18, width, true);
+      view.setInt32(22, height, true);
+      view.setUint16(26, 1, true);
+      view.setUint16(28, 24, true);
+      const file = new File([bmp], 'old.bmp', { type: 'image/bmp' });
+      const { meta } = await imagesToPdf([{ file, format: 'bmp' }], normalisePdfOptions().options);
+      assertEqual(meta.pages, 1, 'page count');
+    });
+
+    await check('a PDF renders back to images, unpacked from the ZIP in the browser', async () => {
+      assert(builtPdf, 'needs the PDF from the earlier check');
+      const file = new File([builtPdf], 'cover.pdf', { type: 'application/pdf' });
+      const { pages, meta } = await pdfToImages(
+        file,
+        normalisePdfRenderOptions({ format: 'jpeg', dpi: 72 }).options,
+      );
+      assertEqual(meta.pageCount, 2, 'pages in the document');
+      assertEqual(pages.length, 2, 'pages unpacked');
+      assertEqual(pages[0].name, 'cover-page-1.jpg', 'entry name');
+      assertEqual(sniffImage(pages[0].bytes).format, 'jpeg', 'entry signature');
+      const size = await decodedSize(pages[1].bytes, 'image/jpeg');
+      assertEqual(size.width, pages[1].width, 'decoded width matches the metadata');
+    });
+
+    await check('a PDF tool rejection surfaces as a coded error', async () => {
+      const file = await makeImageFile('not-a.pdf', 'image/png', 10, 10);
+      let threw = null;
+      try {
+        await pdfToImages(file, normalisePdfRenderOptions().options);
       } catch (error) {
         threw = error;
       }

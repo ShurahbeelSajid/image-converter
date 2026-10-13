@@ -59,8 +59,25 @@ export const MIN_TARGET_BYTES = 1024; // 1 KB - below this nothing useful surviv
 export const REJECTED_FORMATS = Object.freeze({
   svg: 'SVG is a vector format — export it to PNG first.',
   ico: 'ICO icon containers are not supported.',
-  pdf: 'PDF is a document format, not an image.',
+  pdf: 'PDF is a document, not an image - use "PDF to images" to render its pages.',
 });
+
+/** Most pages one PDF request may create or render. */
+export const MAX_PDF_PAGES = 200;
+
+/** Render resolution for PDF pages. 72 DPI is one pixel per PDF point. */
+export const PDF_DPI_MIN = 36;
+export const PDF_DPI_MAX = 600;
+export const PDF_DPI_DEFAULT = 150;
+
+/**
+ * Pixel budget for one rendered PDF page. A4 at 600 DPI is ~35 MP; a poster
+ * page that would blow past this is rendered at a lower DPI instead.
+ */
+export const MAX_PDF_RENDER_PIXELS = 40_000_000;
+
+/** Combined upload limit for a batch of images bound into one PDF. */
+export const MAX_BATCH_UPLOAD_BYTES = 200 * 1024 * 1024; // 200 MiB
 
 /** File-extension allow list, derived from INPUT_FORMATS so it never drifts. */
 export const ACCEPTED_EXTENSIONS = Object.freeze(

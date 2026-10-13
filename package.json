@@ -1,18 +1,22 @@
 {
   "name": "image-forge",
   "version": "1.0.0",
-  "description": "Fast image converter and compressor: any-direction JPG/PNG/WebP/AVIF/GIF/TIFF conversion and target-size compression, with a browser worker-pool frontend, a sharp-powered server API, and a batch CLI.",
+  "description": "Fast image converter and compressor: any-direction JPG/PNG/WebP/AVIF/GIF/TIFF conversion, target-size compression, and images-to-PDF / PDF-to-images, with a browser worker-pool frontend, a sharp-powered server API, and batch CLIs.",
   "type": "module",
   "engines": {
-    "node": ">=18.17"
+    "node": ">=22.13"
   },
   "bin": {
-    "image-forge": "./cli/index.js"
+    "image-forge": "./cli/index.js",
+    "image-forge-pdf": "./cli/pdf.js"
   },
   "scripts": {
     "start": "node server/index.js",
+    "launch": "node scripts/launch.js",
     "dev": "node --watch server/index.js",
     "convert": "node cli/index.js",
+    "pdf": "node cli/pdf.js",
+    "doctor": "node scripts/doctor.js",
     "test": "node --test \"tests/*.test.js\"",
     "test:watch": "node --test --watch \"tests/*.test.js\"",
     "test:browser": "node tests/browser/run.js"
@@ -25,11 +29,15 @@
     "avif",
     "jpeg",
     "png",
+    "pdf",
     "sharp",
     "optimization"
   ],
   "license": "MIT",
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.11",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.4.299",
     "sharp": "^0.34.2"
   }
 }

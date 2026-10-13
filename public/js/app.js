@@ -15,16 +15,23 @@ import {
 import { toOutputName, uniqueName } from './shared/filename.js';
 import { formatBytes, formatDuration, formatSavings, savingsPercent } from './shared/format.js';
 import { createZip } from './shared/zip.js';
-import { cancelAll, convert, probeServer, supportsLocalEncoding } from './converter.js';
+import { cancelAll, convert, serverHealth, supportsLocalEncoding } from './converter.js';
+import { initPdfView } from './pdf-ui.js';
 
 const $ = (id) => document.getElementById(id);
 
 const els = {
   dropzone: $('dropzone'),
+  dropzoneTitle: $('dropzone-title'),
+  dropzoneNote: $('dropzone-note'),
   fileInput: $('file-input'),
   modeConvert: $('mode-convert'),
   modeCompress: $('mode-compress'),
+  modeToPdf: $('mode-to-pdf'),
+  modeFromPdf: $('mode-from-pdf'),
   modeHint: $('mode-hint'),
+  imageView: $('image-view'),
+  pdfView: $('pdf-view'),
   format: $('format'),
   targetSize: $('target-size'),
   background: $('background'),
@@ -66,6 +73,48 @@ let nextId = 1;
 let serverAvailable = false;
 let inFlight = 0;
 let batchStartedAt = 0;
+
+/**
+ * Each tab's wording and what it accepts. The PDF tabs hand their files to
+ * pdf-ui.js; the image tabs share the converter below.
+ */
+const MODES = {
+  convert: {
+    tab: els.modeConvert,
+    view: 'image',
+    hint: 'Change format - JPG, PNG, WebP, AVIF, GIF, TIFF, any direction.',
+    title: 'Drop images here',
+    note: 'converted on your machine, nothing is uploaded',
+    accept: ACCEPT_ATTRIBUTE,
+  },
+  compress: {
+    tab: els.modeCompress,
+    view: 'image',
+    hint: 'Re-encode in the same format, smaller. Set a target size to hit a budget.',
+    title: 'Drop images here',
+    note: 'converted on your machine, nothing is uploaded',
+    accept: ACCEPT_ATTRIBUTE,
+  },
+  'to-pdf': {
+    tab: els.modeToPdf,
+    view: 'pdf',
+    hint: 'Bind images into one PDF - JPEGs go in untouched, everything else losslessly.',
+    title: 'Drop images here',
+    note: 'each one becomes a page, in the order you add them',
+    accept: ACCEPT_ATTRIBUTE,
+  },
+  'from-pdf': {
+    tab: els.modeFromPdf,
+    view: 'pdf',
+    hint: 'Render the pages of a PDF as PNG, JPEG, WebP, AVIF, TIFF or GIF.',
+    title: 'Drop PDF files here',
+    note: 'every page comes back as an image',
+    accept: 'application/pdf,.pdf',
+  },
+};
+let mode = 'convert';
+
+const pdfView = initPdfView({ setStatus: (text) => setStatus(text) });
 
 els.fileInput.accept = ACCEPT_ATTRIBUTE;
 
@@ -240,6 +289,10 @@ const setStatus = (text) => {
 /* -------------------------------------------------------------- the batch */
 
 async function addFiles(fileList) {
+  if (MODES[mode].view === 'pdf') {
+    pdfView.addFiles(fileList);
+    return;
+  }
   const files = [...fileList];
   const batch = validateBatch(files, { maxFiles: MAX_BATCH_FILES });
   if (!batch.valid) {
@@ -383,22 +436,26 @@ function syncControls() {
   }
 }
 
-function setMode(mode) {
-  const compressing = mode === 'compress';
-  els.modeConvert.classList.toggle('is-active', !compressing);
-  els.modeCompress.classList.toggle('is-active', compressing);
-  els.modeConvert.setAttribute('aria-selected', String(!compressing));
-  els.modeCompress.setAttribute('aria-selected', String(compressing));
-
-  if (compressing) {
-    els.format.value = KEEP_SOURCE;
-    els.modeHint.textContent =
-      'Re-encode in the same format, smaller. Set a target size to hit a budget.';
-  } else if (els.format.value === KEEP_SOURCE) {
-    els.format.value = 'webp';
-    els.modeHint.textContent =
-      'Change format - JPG, PNG, WebP, AVIF, GIF, TIFF, any direction.';
+function setMode(next) {
+  mode = next;
+  const spec = MODES[next];
+  for (const [name, entry] of Object.entries(MODES)) {
+    entry.tab.classList.toggle('is-active', name === next);
+    entry.tab.setAttribute('aria-selected', String(name === next));
   }
+  els.modeHint.textContent = spec.hint;
+  els.dropzoneTitle.textContent = spec.title;
+  els.dropzoneNote.textContent = spec.note;
+  els.fileInput.accept = spec.accept;
+  els.imageView.hidden = spec.view !== 'image';
+  els.pdfView.hidden = spec.view !== 'pdf';
+
+  if (spec.view === 'pdf') {
+    pdfView.setMode(next);
+    return;
+  }
+  if (next === 'compress') els.format.value = KEEP_SOURCE;
+  else if (els.format.value === KEEP_SOURCE) els.format.value = 'webp';
   syncControls();
 }
 
@@ -413,8 +470,9 @@ els.format.addEventListener('change', () => {
   // Picking a concrete format is itself a switch out of compress mode.
   setMode(els.format.value === KEEP_SOURCE ? 'compress' : 'convert');
 });
-els.modeConvert.addEventListener('click', () => setMode('convert'));
-els.modeCompress.addEventListener('click', () => setMode('compress'));
+for (const [name, spec] of Object.entries(MODES)) {
+  spec.tab.addEventListener('click', () => setMode(name));
+}
 
 els.dropzone.addEventListener('click', () => els.fileInput.click());
 els.dropzone.addEventListener('keydown', (event) => {
@@ -465,7 +523,11 @@ window.addEventListener('pagehide', () => {
 
 async function init() {
   const local = supportsLocalEncoding();
-  serverAvailable = await probeServer();
+  const health = await serverHealth();
+  serverAvailable = health !== null;
+  pdfView.setServer(health);
+  // A PDF tab opened before the probe answered is showing a stale verdict.
+  if (MODES[mode].view === 'pdf') pdfView.setMode(mode);
 
   const label = local ? 'Local' : serverAvailable ? 'Server' : 'Unavailable';
   els.engineLabel.textContent = serverAvailable && local ? 'Local + server' : label;

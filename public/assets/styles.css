@@ -110,6 +110,7 @@ h1 { margin: 0; font-size: 1.2rem; letter-spacing: -0.01em; }
   background: var(--bg-elevated);
   font-size: 0.78rem;
   color: var(--text-dim);
+  white-space: nowrap;
 }
 
 .badge .dot {
@@ -437,6 +438,58 @@ input[type="range"] {
 
 .result-actions { display: flex; align-items: center; min-width: 92px; justify-content: flex-end; }
 
+/* PDF rows have one image, not a before/after pair. */
+.result.is-single .thumbs > :not(:last-child) { display: none; }
+
+/* ---------- PDF page queue ---------- */
+
+.queue-panel {
+  margin-top: 1.25rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elevated);
+}
+
+.queue-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+}
+
+.queue-title { margin: 0; font-weight: 650; }
+.queue-hint { margin-left: 0.4rem; font-size: 0.8rem; font-weight: 400; color: var(--text-faint); }
+
+.queue {
+  list-style: none;
+  margin: 0.9rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.45rem;
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.queue-item {
+  display: grid;
+  grid-template-columns: 1.6rem auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+}
+
+.queue-item .thumb-img { width: 40px; height: 40px; }
+.queue-index { font-size: 0.8rem; font-weight: 650; color: var(--text-faint); text-align: right; font-variant-numeric: tabular-nums; }
+.queue-actions { display: flex; gap: 0.3rem; }
+
+.btn-icon { width: 2rem; padding: 0.35rem 0; font-size: 0.9rem; line-height: 1; }
+.btn-small:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-small:disabled:hover { border-color: var(--border); color: var(--text); }
+
 .spinner {
   width: 16px; height: 16px;
   border: 2px solid var(--border-strong);
@@ -460,4 +513,10 @@ input[type="range"] {
   .result-actions { grid-column: 2; }
   .summary-actions { margin-left: 0; width: 100%; }
   .summary { gap: 1rem; }
+  /* A nested scroll area is awkward on a phone; let the page scroll instead. */
+  .queue { max-height: none; overflow-y: visible; }
+  .queue-item { grid-template-columns: auto minmax(0, 1fr); }
+  .queue-index { display: none; }
+  .queue-actions { grid-column: 1 / -1; justify-content: flex-end; }
+  .queue-hint { display: block; margin: 0.2rem 0 0; }
 }

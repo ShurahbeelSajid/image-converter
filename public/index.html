@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Image Forge - convert &amp; compress images</title>
-<meta name="description" content="Convert and compress images between JPG, PNG, WebP, AVIF, GIF and TIFF. Runs in your browser - images never leave your machine.">
+<meta name="description" content="Convert and compress images between JPG, PNG, WebP, AVIF, GIF and TIFF, bind images into a PDF, or render a PDF's pages as images. Runs on your machine - nothing is uploaded anywhere else.">
 <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="./assets/styles.css">
 <link rel="modulepreload" href="./js/converter.js">
@@ -21,7 +21,7 @@
     </span>
     <div>
       <h1>Image Forge</h1>
-      <p class="tagline">Convert &amp; compress &middot; JPG &middot; PNG &middot; WebP &middot; AVIF &middot; GIF &middot; TIFF</p>
+      <p class="tagline">Convert &amp; compress &middot; JPG &middot; PNG &middot; WebP &middot; AVIF &middot; GIF &middot; TIFF &middot; PDF</p>
     </div>
   </div>
   <div class="engine-status">
@@ -45,18 +45,23 @@
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <path d="M7 10l5-5 5 5"/><path d="M12 5v13"/>
     </svg>
-    <p class="dropzone-title">Drop images here</p>
-    <p id="dropzone-hint" class="dropzone-hint">or <span class="link">browse your files</span> &mdash; converted on your machine, nothing is uploaded</p>
+    <p id="dropzone-title" class="dropzone-title">Drop images here</p>
+    <p id="dropzone-hint" class="dropzone-hint">or <span class="link">browse your files</span> &mdash; <span id="dropzone-note">converted on your machine, nothing is uploaded</span></p>
   </section>
 
   <div class="modes" role="tablist" aria-label="Mode">
     <button type="button" class="mode is-active" id="mode-convert" role="tab"
-            aria-selected="true" aria-controls="controls">Convert</button>
+            aria-selected="true" aria-controls="image-view">Convert</button>
     <button type="button" class="mode" id="mode-compress" role="tab"
-            aria-selected="false" aria-controls="controls">Compress</button>
+            aria-selected="false" aria-controls="image-view">Compress</button>
+    <button type="button" class="mode" id="mode-to-pdf" role="tab"
+            aria-selected="false" aria-controls="pdf-view">Images &rarr; PDF</button>
+    <button type="button" class="mode" id="mode-from-pdf" role="tab"
+            aria-selected="false" aria-controls="pdf-view">PDF &rarr; Images</button>
     <p id="mode-hint" class="mode-hint">Change format &mdash; JPG, PNG, WebP, AVIF, GIF, TIFF, any direction.</p>
   </div>
 
+  <div id="image-view">
   <section class="controls" id="controls" aria-label="Conversion settings">
     <div class="control" id="format-control">
       <label for="format">Convert to</label>
@@ -134,13 +139,155 @@
   </div>
 
   <ul id="results" class="results" aria-live="polite"></ul>
+  </div>
+
+  <!-- PDF tools. Both directions run on the server engine: building and
+       rendering PDFs needs pdf-lib and pdf.js, which live there. -->
+  <div id="pdf-view" hidden>
+    <section class="controls" id="to-pdf-controls" aria-label="PDF settings">
+      <div class="control">
+        <label for="pdf-page-size">Page size</label>
+        <select id="pdf-page-size">
+          <option value="fit" selected>Fit to image</option>
+          <option value="a4">A4</option>
+          <option value="letter">US Letter</option>
+          <option value="legal">US Legal</option>
+          <option value="a3">A3</option>
+          <option value="a5">A5</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="pdf-orientation">Orientation</label>
+        <select id="pdf-orientation">
+          <option value="auto" selected>Match image</option>
+          <option value="portrait">Portrait</option>
+          <option value="landscape">Landscape</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="pdf-margin">Margin <span class="unit">mm</span></label>
+        <input type="number" id="pdf-margin" min="0" max="50" value="0" inputmode="numeric">
+      </div>
+
+      <div class="control">
+        <label for="pdf-images">Images</label>
+        <select id="pdf-images">
+          <option value="original" selected>Original quality</option>
+          <option value="compress">Compress (JPEG)</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="pdf-quality">Quality <output id="pdf-quality-value">82</output></label>
+        <input type="range" id="pdf-quality" min="1" max="100" value="82" step="1">
+      </div>
+
+      <div class="control" id="pdf-background-control" hidden>
+        <label for="pdf-background">Background <span class="unit">no alpha</span></label>
+        <input type="color" id="pdf-background" value="#ffffff">
+      </div>
+    </section>
+
+    <section class="controls" id="from-pdf-controls" aria-label="Page image settings" hidden>
+      <div class="control">
+        <label for="render-format">Save pages as</label>
+        <select id="render-format">
+          <option value="png" selected>PNG</option>
+          <option value="jpeg">JPEG (.jpg)</option>
+          <option value="webp">WebP</option>
+          <option value="avif">AVIF</option>
+          <option value="tiff">TIFF</option>
+          <option value="gif">GIF</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="render-dpi">Resolution</label>
+        <select id="render-dpi">
+          <option value="72">72 DPI &middot; small</option>
+          <option value="96">96 DPI &middot; screen</option>
+          <option value="150" selected>150 DPI &middot; balanced</option>
+          <option value="200">200 DPI</option>
+          <option value="300">300 DPI &middot; print</option>
+          <option value="600">600 DPI &middot; archive</option>
+        </select>
+      </div>
+
+      <div class="control">
+        <label for="render-pages">Pages</label>
+        <input type="text" id="render-pages" placeholder="all, or e.g. 1-3, 5"
+               autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="control">
+        <label for="render-quality">Quality <output id="render-quality-value">82</output></label>
+        <input type="range" id="render-quality" min="1" max="100" value="82" step="1">
+      </div>
+
+      <div class="control">
+        <label for="render-background">Page background</label>
+        <input type="color" id="render-background" value="#ffffff">
+      </div>
+    </section>
+
+    <div id="pdf-error" class="option-error" role="alert" hidden></div>
+
+    <section id="pdf-queue-panel" class="queue-panel" aria-label="Pages of the new PDF" hidden>
+      <div class="queue-head">
+        <p class="queue-title"><span id="pdf-queue-count">0 pages</span>
+          <span class="queue-hint">The PDF follows this order &mdash; use the arrows to change it.</span></p>
+        <div class="summary-actions">
+          <button type="button" id="pdf-create" class="btn btn-primary">Create PDF</button>
+          <button type="button" id="pdf-queue-clear" class="btn btn-ghost">Clear</button>
+        </div>
+      </div>
+      <ol id="pdf-queue" class="queue"></ol>
+    </section>
+
+    <ul id="pdf-output" class="results" aria-live="polite"></ul>
+
+    <section id="pdf-summary" class="summary" aria-live="polite" hidden>
+      <div class="stat"><span class="stat-label">Pages</span><span class="stat-value" id="pdf-stat-pages">0</span></div>
+      <div class="stat"><span class="stat-label">PDF size</span><span class="stat-value" id="pdf-stat-before">0 B</span></div>
+      <div class="stat"><span class="stat-label">Output</span><span class="stat-value" id="pdf-stat-after">0 B</span></div>
+      <div class="stat"><span class="stat-label">Time</span><span class="stat-value" id="pdf-stat-time">-</span></div>
+      <div class="summary-actions">
+        <button type="button" id="pdf-download-all" class="btn btn-primary" disabled>Download all (.zip)</button>
+        <button type="button" id="pdf-clear" class="btn btn-ghost">Clear</button>
+      </div>
+    </section>
+
+    <div id="pdf-progress" class="progress" hidden>
+      <div id="pdf-progress-bar" class="progress-bar"></div>
+    </div>
+
+    <ul id="pdf-results" class="results" aria-live="polite"></ul>
+  </div>
 
   <p id="status" class="visually-hidden" role="status" aria-live="polite"></p>
 </main>
 
 <footer class="footer">
-  <p>Images are converted locally in a Web Worker pool. The server engine handles formats your browser cannot decode or write.</p>
+  <p>Images are converted locally in a Web Worker pool. The server engine on this machine handles formats your browser cannot decode or write, and PDFs.</p>
 </footer>
+
+<template id="queue-item-template">
+  <li class="queue-item">
+    <span class="queue-index" aria-hidden="true"></span>
+    <img class="thumb-img" alt="" decoding="async">
+    <div class="result-body">
+      <p class="result-name"></p>
+      <p class="result-meta"></p>
+    </div>
+    <div class="queue-actions">
+      <button type="button" class="btn btn-small btn-icon" data-move="-1">&uarr;</button>
+      <button type="button" class="btn btn-small btn-icon" data-move="1">&darr;</button>
+      <button type="button" class="btn btn-small btn-icon" data-remove>&times;</button>
+    </div>
+  </li>
+</template>
 
 <template id="result-template">
   <li class="result">

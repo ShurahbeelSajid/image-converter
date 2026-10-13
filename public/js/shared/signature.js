@@ -177,7 +177,11 @@ export function sniffImage(input) {
     return { ...miss, format: 'ico', reason: 'ICO icon containers are not supported.' };
   }
   if (starts(b, 0x25, 0x50, 0x44, 0x46)) {
-    return { ...miss, format: 'pdf', reason: 'PDF is a document format, not an image.' };
+    return {
+      ...miss,
+      format: 'pdf',
+      reason: 'PDF is a document, not an image - use "PDF to images" to render its pages.',
+    };
   }
 
   // SVG is text: it may open with whitespace, an XML prolog or comments before

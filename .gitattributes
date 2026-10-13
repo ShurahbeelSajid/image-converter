@@ -1,0 +1,4 @@
+# cmd.exe misreads goto/call labels in batch files that use bare LF endings,
+# so batch files keep CRLF whatever a checkout's autocrlf setting says.
+*.bat text eol=crlf
+*.cmd text eol=crlf

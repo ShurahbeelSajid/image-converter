@@ -163,3 +163,61 @@ export function createZip(entries) {
 
   return out;
 }
+
+/**
+ * Read a store-only archive - the kind `createZip` writes - back into entries.
+ *
+ * Walks the central directory, as unzip tools do, and checks every CRC.
+ * Compressed entries are refused rather than misread: this exists to unpack
+ * the archives this app produces, not arbitrary ZIP files.
+ *
+ * @param {Uint8Array|ArrayBuffer} input The complete archive.
+ * @returns {Array<{name: string, data: Uint8Array}>} Entries in archive order;
+ *   each `data` is a view into `input`, not a copy.
+ */
+export function readZip(input) {
+  const bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const u16 = (at) => view.getUint16(at, true);
+  const u32 = (at) => view.getUint32(at, true);
+
+  // The end record is 22 bytes plus a comment of up to 64 KiB, so scan back.
+  let end = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 22 - 0xffff); i -= 1) {
+    if (u32(i) === END_OF_CENTRAL) {
+      end = i;
+      break;
+    }
+  }
+  if (end < 0) throw new RangeError('Not a ZIP archive.');
+
+  const decoder = new TextDecoder();
+  const entries = [];
+  let offset = u32(end + 16);
+  for (let n = u16(end + 10); n > 0; n -= 1) {
+    if (offset + 46 > bytes.length || u32(offset) !== CENTRAL_HEADER) {
+      throw new RangeError('The ZIP central directory is corrupt.');
+    }
+    const nameLength = u16(offset + 28);
+    const name = decoder.decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
+    if (u16(offset + 10) !== STORE) {
+      throw new RangeError(`ZIP entry "${name}" is compressed; only stored entries can be read.`);
+    }
+
+    const local = u32(offset + 42);
+    if (local + 30 > bytes.length || u32(local) !== LOCAL_HEADER) {
+      throw new RangeError(`ZIP entry "${name}" has a corrupt local header.`);
+    }
+    const start = local + 30 + u16(local + 26) + u16(local + 28);
+    const size = u32(offset + 20);
+    if (start + size > bytes.length) throw new RangeError(`ZIP entry "${name}" is truncated.`);
+
+    const data = bytes.subarray(start, start + size);
+    if (crc32(data) !== u32(offset + 16)) {
+      throw new RangeError(`ZIP entry "${name}" failed its CRC check.`);
+    }
+    entries.push({ name, data });
+    offset += 46 + nameLength + u16(offset + 30) + u16(offset + 32);
+  }
+  return entries;
+}
